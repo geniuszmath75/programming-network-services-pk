@@ -1,6 +1,7 @@
 package org.example.project1.tcp;
 
 import org.example.project1.common.Messages;
+import org.example.project1.common.Net;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * TCP client: sends {@code PING <text>}, prints {@code PONG <text>} reply.
+ * Host may be IPv4 or IPv6 (e.g. {@code ::1}).
  */
 public final class TcpClient {
 
@@ -23,6 +25,7 @@ public final class TcpClient {
         if (args.length < 2 || args.length > 3) {
             System.err.println("Usage: TcpClient <host> <port> [text]");
             System.err.println("Example: TcpClient 127.0.0.1 9000 hello");
+            System.err.println("Example: TcpClient ::1 9000 hello");
             System.exit(1);
         }
 
@@ -31,6 +34,8 @@ public final class TcpClient {
         String text = args.length == 3 ? args[2] : "hello";
 
         try (Socket socket = new Socket(host, port)) {
+            System.out.println("connected to " + socket.getRemoteSocketAddress()
+                    + " (" + Net.familyLabel(host) + ")");
             BufferedWriter out = new BufferedWriter(
                     new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
             BufferedReader in = new BufferedReader(
