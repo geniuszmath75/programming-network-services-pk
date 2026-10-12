@@ -1,6 +1,7 @@
 package org.example.project1.udp;
 
 import org.example.project1.common.Messages;
+import org.example.project1.common.Net;
 
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * UDP client: sends one {@code PING} datagram, prints {@code PONG} reply.
+ * Host may be IPv4 or IPv6 (e.g. {@code ::1}).
  */
 public final class UdpClient {
 
@@ -22,6 +24,7 @@ public final class UdpClient {
         if (args.length < 2 || args.length > 3) {
             System.err.println("Usage: UdpClient <host> <port> [text]");
             System.err.println("Example: UdpClient 127.0.0.1 9001 hello");
+            System.err.println("Example: UdpClient ::1 9001 hello");
             System.exit(1);
         }
 
@@ -30,11 +33,11 @@ public final class UdpClient {
         String text = args.length == 3 ? args[2] : "hello";
 
         byte[] requestBytes = (Messages.ping(text) + "\n").getBytes(StandardCharsets.UTF_8);
-        try (DatagramSocket socket = new DatagramSocket()) {
+        try (DatagramSocket socket = Net.newDatagramSocket(host)) {
             socket.setSoTimeout(TIMEOUT_MS);
             DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, host, port);
             socket.send(request);
-            System.out.println("sent: " + Messages.ping(text));
+            System.out.println("sent via " + Net.familyLabel(host) + ": " + Messages.ping(text));
 
             byte[] buffer = new byte[Messages.MAX_PAYLOAD_BYTES];
             DatagramPacket response = new DatagramPacket(buffer, buffer.length);

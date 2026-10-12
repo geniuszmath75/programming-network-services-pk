@@ -1,6 +1,7 @@
 package org.example.project1.tcp;
 
 import org.example.project1.common.Messages;
+import org.example.project1.common.Net;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -14,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Single-threaded TCP echo server: reads {@code PING <text>}, replies {@code PONG <text>}.
+ * Bind host may be IPv4 ({@code 127.0.0.1}) or IPv6 ({@code ::1}).
  */
 public final class TcpServer {
 
@@ -24,6 +26,7 @@ public final class TcpServer {
         if (args.length < 1 || args.length > 2) {
             System.err.println("Usage: TcpServer <port> [bindHost]");
             System.err.println("Example: TcpServer 9000 127.0.0.1");
+            System.err.println("Example: TcpServer 9000 ::1");
             System.exit(1);
         }
 
@@ -33,7 +36,8 @@ public final class TcpServer {
                 : InetAddress.getByName("127.0.0.1");
 
         try (ServerSocket serverSocket = new ServerSocket(port, 50, bindAddress)) {
-            System.out.println("TCP server listening on " + serverSocket.getLocalSocketAddress());
+            System.out.println("TCP server listening on " + serverSocket.getLocalSocketAddress()
+                    + " (" + Net.familyLabel(bindAddress) + ")");
             while (true) {
                 try (Socket socket = serverSocket.accept()) {
                     handleClient(socket);
@@ -47,7 +51,8 @@ public final class TcpServer {
     }
 
     private static void handleClient(Socket socket) throws IOException {
-        System.out.println("accepted " + socket.getRemoteSocketAddress());
+        System.out.println("accepted " + socket.getRemoteSocketAddress()
+                + " (" + Net.familyLabel(socket.getInetAddress()) + ")");
         BufferedReader in = new BufferedReader(
                 new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
         BufferedWriter out = new BufferedWriter(
