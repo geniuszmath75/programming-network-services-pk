@@ -4,7 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
- * Minimal application protocol shared by TCP and UDP demos.
+ * Minimal application protocol shared by TCP, UDP, and RAW demos.
  * Wire format: one UTF-8 line — {@code PING <text>} or {@code PONG <text>}.
  */
 public final class Messages {
