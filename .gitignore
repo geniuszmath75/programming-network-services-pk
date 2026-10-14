@@ -1,4 +1,5 @@
 target/
+project1/.cap-runtime/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

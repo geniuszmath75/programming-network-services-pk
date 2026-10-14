@@ -32,17 +32,42 @@ java -cp project1/target/classes org.example.project1.udp.UdpServer 9001 ::1
 java -cp project1/target/classes org.example.project1.udp.UdpClient ::1 9001 hello
 ```
 
-### RAW sockets (IPv4, IP proto 253)
+### Linux capabilities (ports &lt;1024 + RAW without root)
 
-Uses JDK Panama FFM (`socket`/`sendto`/`recvfrom`). Needs `CAP_NET_RAW` or root.
-Also pass `--enable-native-access=ALL-UNNAMED` for FFM.
+Do **not** `setcap` on `$JAVA_HOME/bin/java` — glibc then ignores `$ORIGIN` and `libjli.so` fails to load.
+`grant-caps.sh` builds `project1/.cap-runtime/java` (copy + absolute RPATH via `patchelf` + capabilities).
 
 ```bash
+sudo apt install libcap2-bin patchelf   # once
 export JAVA_HOME="${JAVA_HOME:-$HOME/.jdks/openjdk-25.0.2}"
+./project1/scripts/grant-caps.sh
+CAP_JAVA=project1/.cap-runtime/java
+```
 
-sudo "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp project1/target/classes \
+Revoke: `./project1/scripts/revoke-caps.sh`
+
+#### Privileged TCP / UDP (ports &lt;1024)
+
+```bash
+"$CAP_JAVA" -cp project1/target/classes org.example.project1.tcp.TcpServer 801 127.0.0.1
+java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 801 hello
+
+"$CAP_JAVA" -cp project1/target/classes org.example.project1.udp.UdpServer 802 127.0.0.1
+java -cp project1/target/classes org.example.project1.udp.UdpClient 127.0.0.1 802 hello
+```
+
+### RAW sockets (IPv4, IP proto 253)
+
+JDK Panama FFM; needs `CAP_NET_RAW` (`grant-caps.sh`) or root. Use `--enable-native-access=ALL-UNNAMED`.
+
+```bash
+CAP_JAVA=project1/.cap-runtime/java
+
+"$CAP_JAVA" --enable-native-access=ALL-UNNAMED -cp project1/target/classes \
   org.example.project1.raw.RawServer
 
-sudo "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp project1/target/classes \
+"$CAP_JAVA" --enable-native-access=ALL-UNNAMED -cp project1/target/classes \
   org.example.project1.raw.RawClient 127.0.0.1 hello
 ```
+
+Fallback: `sudo "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp ... RawServer`
