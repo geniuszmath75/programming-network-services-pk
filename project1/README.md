@@ -71,3 +71,30 @@ CAP_JAVA=project1/.cap-runtime/java
 ```
 
 Fallback: `sudo "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp ... RawServer`
+
+### Firewall (nftables) — allow / deny demo traffic
+
+One script, dedicated table `inet pus_project1` (does not replace the system firewall).
+Covers TCP `801,9000`, UDP `802,9001`, and IP protocol `253` (RAW).
+
+```bash
+sudo apt install nftables   # if needed
+```
+
+Demo sequence (TCP; same idea for UDP/RAW):
+
+```bash
+# terminal 1 — server
+java -cp project1/target/classes org.example.project1.tcp.TcpServer 9000 127.0.0.1
+
+# terminal 2
+./project1/scripts/firewall.sh deny    # client → Connection refused
+java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 9000 hello
+
+./project1/scripts/firewall.sh allow   # client works again
+java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 9000 hello
+
+./project1/scripts/firewall.sh reset   # remove demo table
+```
+
+Inspect: `sudo nft list chain inet pus_project1 input`
