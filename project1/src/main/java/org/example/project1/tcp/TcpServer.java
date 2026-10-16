@@ -14,14 +14,19 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 /**
- * Single-threaded TCP echo server: reads {@code PING <text>}, replies {@code PONG <text>}.
- * Bind host may be IPv4 ({@code 127.0.0.1}) or IPv6 ({@code ::1}).
+ * TCP echo server: accept one client at a time, read {@code PING}, write {@code PONG}.
+ * CLI: {@code TcpServer <port> [bindHost]} — host may be {@code 127.0.0.1} or {@code ::1}.
  */
 public final class TcpServer {
 
     private TcpServer() {
     }
 
+    /**
+     * Binds a listening TCP socket and serves clients in a loop.
+     *
+     * @param args {@code port} and optional {@code bindHost}
+     */
     public static void main(String[] args) throws IOException {
         if (args.length < 1 || args.length > 2) {
             System.err.println("Usage: TcpServer <port> [bindHost]");
@@ -30,16 +35,17 @@ public final class TcpServer {
             System.exit(1);
         }
 
-        int port = Integer.parseInt(args[0]);
+        int port = Integer.parseInt(args[0]); // L4 listen port
         InetAddress bindAddress = args.length == 2
-                ? InetAddress.getByName(args[1])
+                ? InetAddress.getByName(args[1]) // IPv4 or IPv6 bind
                 : InetAddress.getByName("127.0.0.1");
 
+        // backlog 50: pending TCP handshakes queue
         try (ServerSocket serverSocket = new ServerSocket(port, 50, bindAddress)) {
             System.out.println("TCP server listening on " + serverSocket.getLocalSocketAddress()
                     + " (" + Net.familyLabel(bindAddress) + ")");
             while (true) {
-                try (Socket socket = serverSocket.accept()) {
+                try (Socket socket = serverSocket.accept()) { // blocks until client connects
                     handleClient(socket);
                 } catch (IllegalArgumentException ex) {
                     System.err.println("protocol error: " + ex.getMessage());
@@ -50,6 +56,11 @@ public final class TcpServer {
         }
     }
 
+    /**
+     * Handles a single connected client: one PING line in, one PONG line out, then close.
+     *
+     * @param socket accepted connected client socket
+     */
     private static void handleClient(Socket socket) throws IOException {
         System.out.println("accepted " + socket.getRemoteSocketAddress()
                 + " (" + Net.familyLabel(socket.getInetAddress()) + ")");
@@ -58,7 +69,7 @@ public final class TcpServer {
         BufferedWriter out = new BufferedWriter(
                 new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8));
 
-        String line = in.readLine();
+        String line = in.readLine(); // one line = one message
         if (line == null) {
             return;
         }

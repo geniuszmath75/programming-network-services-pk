@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# Demo firewall for project1 (dedicated nftables table inet pus_project1).
+# Demo firewall for project1 using a dedicated nftables table (does not replace system FW).
 # Usage: ./firewall.sh allow|deny|reset
 set -euo pipefail
 
+# --- demo traffic covered by the rules ---
 TABLE=pus_project1
-TCP_PORTS="{ 801, 9000 }"
-UDP_PORTS="{ 802, 9001 }"
-IP_PROTO=253
+TCP_PORTS="{ 801, 9000 }"   # privileged + unprivileged TCP
+UDP_PORTS="{ 802, 9001 }"   # privileged + unprivileged UDP
+IP_PROTO=253                # RAW demo protocol
 
 command -v nft >/dev/null || { echo "error: install nftables" >&2; exit 1; }
 
+# Removes the demo table if present (safe no-op when missing).
 delete_table() {
   sudo nft delete table inet "${TABLE}" 2>/dev/null || true
 }
 
+# Installs an INPUT chain with the same ports/proto and a single verdict (e.g. accept).
+# Used by "allow"; "deny" needs a custom TCP reset so it has its own block below.
 apply_rules() {
-  local action=$1
+  local action=$1   # nft verdict: accept / drop / …
   delete_table
   sudo nft -f - <<EOF
 table inet ${TABLE} {
@@ -33,10 +37,11 @@ EOF
 
 case "${1:-}" in
   allow)
+    # Explicit ACCEPT rules for demo traffic (policy is already accept).
     apply_rules accept
     ;;
   deny)
-    # TCP gets an explicit reset; UDP/RAW use generic reject.
+    # REJECT so demos fail immediately (TCP reset → Connection refused).
     delete_table
     sudo nft -f - <<EOF
 table inet ${TABLE} {
@@ -53,6 +58,7 @@ EOF
     echo "Expected: TcpClient → Connection refused; UdpClient/RawClient → error/timeout."
     ;;
   reset)
+    # Cleanup: drop the whole demo table.
     delete_table
     echo "Removed table inet ${TABLE} (if it existed)."
     ;;

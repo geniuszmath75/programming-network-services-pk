@@ -5,14 +5,19 @@ import org.example.project1.common.Messages;
 import java.nio.charset.StandardCharsets;
 
 /**
- * SOCK_RAW server (IP protocol 253): replies {@code PONG} to {@code PING} payloads.
- * Requires {@code CAP_NET_RAW} (or root). IPv4 only.
+ * RAW server on IP protocol 253: answer {@code PING} with {@code PONG}.
+ * Needs {@code CAP_NET_RAW} (see {@code scripts/grant-caps.sh}). IPv4 only.
  */
 public final class RawServer {
 
     private RawServer() {
     }
 
+    /**
+     * Opens a SOCK_RAW socket and serves PING requests until the process is killed.
+     *
+     * @param args must be empty (no CLI options)
+     */
     public static void main(String[] args) {
         if (args.length != 0) {
             System.err.println("Usage: RawServer");
@@ -35,6 +40,12 @@ public final class RawServer {
         }
     }
 
+    /**
+     * Receives one IP packet; if it carries a valid PING on proto 253, sends PONG
+     * back to the IP source address.
+     *
+     * @param socket open raw socket
+     */
     private static void handleOne(RawSocket socket) {
         RawSocket.Received received = socket.receive();
         IpPacket ip = received.packet();
@@ -53,11 +64,11 @@ public final class RawServer {
             return;
         }
         if (!Messages.PING.equals(parsed.type())) {
-            return;
+            return; // ignore PONG / noise
         }
         System.out.println("from " + ip.source() + ": " + line);
         byte[] reply = Messages.pong(parsed.text()).getBytes(StandardCharsets.UTF_8);
-        socket.send(ip.source(), reply);
+        socket.send(ip.source(), reply); // reply to IP source
         System.out.println("replied: " + Messages.pong(parsed.text()));
     }
 }
