@@ -8,26 +8,34 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 
 /**
- * Small helpers so the same TCP/UDP entrypoints work for IPv4 and IPv6.
+ * Helpers so TCP/UDP demos work the same for IPv4 and IPv6.
  */
 public final class Net {
 
     private Net() {
     }
 
+    /**
+     * Returns a short label for logs: {@code IPv4} or {@code IPv6}.
+     *
+     * @param address peer or local bind address
+     */
     public static String familyLabel(InetAddress address) {
         return address instanceof Inet6Address ? "IPv6" : "IPv4";
     }
 
     /**
-     * Unbound UDP sockets default to IPv4 on many JVMs; bind an IPv6 wildcard
-     * when talking to an IPv6 peer so datagrams can actually be sent.
+     * Creates a UDP socket that can talk to {@code peer}.
+     * Plain {@code new DatagramSocket()} is often IPv4-only; for an IPv6 peer
+     * this binds an IPv6 wildcard ({@code ::}) with an ephemeral port.
+     *
+     * @param peer destination host (decides address family)
      */
     public static DatagramSocket newDatagramSocket(InetAddress peer) throws SocketException {
         if (peer instanceof Inet6Address) {
             try {
-                InetAddress any6 = InetAddress.getByName("::");
-                return new DatagramSocket(new InetSocketAddress(any6, 0));
+                InetAddress any6 = InetAddress.getByName("::"); // IPv6 any-local
+                return new DatagramSocket(new InetSocketAddress(any6, 0)); // ephemeral port
             } catch (UnknownHostException e) {
                 throw new SocketException("IPv6 not available: " + e.getMessage());
             }

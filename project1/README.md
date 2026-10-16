@@ -1,7 +1,30 @@
-## Project 1 — TCP / UDP / RAW
+# Project 1 — starter pack klienta i serwera (PUS)
 
-Requires **JDK 25** (bytecode version 69). System `/usr/bin/java` is often older (e.g. 21) —
-set `JAVA_HOME` before build/run. With `sudo`, always use `"$JAVA_HOME/bin/java"` (sudo resets `PATH`).
+Cel: samodzielna komunikacja w warstwie 4 (TCP/UDP) i 3 (SOCK_RAW), IPv4+IPv6, Linux capabilities, firewall.
+Technologia: **Java 25**, gniazda JDK + Panama FFM (libc) dla RAW — bez gotowej biblioteki protokołu.
+
+## Mapa kodu
+
+| Ścieżka | Rola |
+|---------|------|
+| `common/Messages.java` | Protokół aplikacji `PING`/`PONG` |
+| `common/Net.java` | Etykieta IPv4/IPv6 + UDP socket pod IPv6 |
+| `tcp/TcpServer.java`, `TcpClient.java` | TCP (strumień, połączeniowy) |
+| `udp/UdpServer.java`, `UdpClient.java` | UDP (datagram, bezpołączeniowy) |
+| `raw/Libc.java` | FFM → `socket`/`sendto`/`recvfrom`/`setsockopt` |
+| `raw/IpPacket.java` | Parse nagłówka IPv4 z recv |
+| `raw/RawSocket.java` | SOCK_RAW, proto **253** |
+| `raw/RawServer.java`, `RawClient.java` | Klient/serwer RAW |
+| `scripts/grant-caps.sh` / `revoke-caps.sh` | Capabilities bez root w runtime |
+| `scripts/firewall.sh` | nftables allow/deny/reset |
+
+Protokół aplikacji (wszędzie ten sam): jedna linia UTF-8 `PING <text>` → `PONG <text>` (max 512 B).
+
+## Wymagania
+
+- JDK **25** (`JAVA_HOME`, nie systemowe Java 21)
+- Maven
+- Linux: `libcap2-bin`, `patchelf` (capabilities), `nftables` (firewall)
 
 ```bash
 export JAVA_HOME="${JAVA_HOME:-$HOME/.jdks/openjdk-25.0.2}"
@@ -9,10 +32,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 mvn -pl project1 compile
 ```
 
-Protocol: one UTF-8 line `PING <text>` → `PONG <text>` (max 512 bytes).
-TCP/UDP accept IPv4 or IPv6 via `InetAddress`. RAW is IPv4-only (IP protocol 253).
-
-### TCP / UDP — IPv4
+## Demo — TCP / UDP (IPv4)
 
 ```bash
 java -cp project1/target/classes org.example.project1.tcp.TcpServer 9000 127.0.0.1
@@ -22,7 +42,7 @@ java -cp project1/target/classes org.example.project1.udp.UdpServer 9001 127.0.0
 java -cp project1/target/classes org.example.project1.udp.UdpClient 127.0.0.1 9001 hello
 ```
 
-### TCP / UDP — IPv6
+## Demo — TCP / UDP (IPv6)
 
 ```bash
 java -cp project1/target/classes org.example.project1.tcp.TcpServer 9000 ::1
@@ -32,23 +52,16 @@ java -cp project1/target/classes org.example.project1.udp.UdpServer 9001 ::1
 java -cp project1/target/classes org.example.project1.udp.UdpClient ::1 9001 hello
 ```
 
-### Linux capabilities (ports &lt;1024 + RAW without root)
+## Linux capabilities (porty &lt;1024 + RAW bez root)
 
-Do **not** `setcap` on `$JAVA_HOME/bin/java` — glibc then ignores `$ORIGIN` and `libjli.so` fails to load.
-`grant-caps.sh` builds `project1/.cap-runtime/java` (copy + absolute RPATH via `patchelf` + capabilities).
+Nie wolno `setcap` na stockowym `$JAVA_HOME/bin/java` — wtedy `libjli.so` się nie ładuje (`$ORIGIN` ignorowane przy AT_SECURE).
+Skrypt buduje kopię `project1/.cap-runtime/java` z absolutnym RPATH + capabilities.
 
 ```bash
-sudo apt install libcap2-bin patchelf   # once
-export JAVA_HOME="${JAVA_HOME:-$HOME/.jdks/openjdk-25.0.2}"
+sudo apt install libcap2-bin patchelf
 ./project1/scripts/grant-caps.sh
 CAP_JAVA=project1/.cap-runtime/java
-```
 
-Revoke: `./project1/scripts/revoke-caps.sh`
-
-#### Privileged TCP / UDP (ports &lt;1024)
-
-```bash
 "$CAP_JAVA" -cp project1/target/classes org.example.project1.tcp.TcpServer 801 127.0.0.1
 java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 801 hello
 
@@ -56,9 +69,9 @@ java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 80
 java -cp project1/target/classes org.example.project1.udp.UdpClient 127.0.0.1 802 hello
 ```
 
-### RAW sockets (IPv4, IP proto 253)
+Cofnięcie: `./project1/scripts/revoke-caps.sh`
 
-JDK Panama FFM; needs `CAP_NET_RAW` (`grant-caps.sh`) or root. Use `--enable-native-access=ALL-UNNAMED`.
+## RAW (IPv4, IP proto 253)
 
 ```bash
 CAP_JAVA=project1/.cap-runtime/java
@@ -72,29 +85,30 @@ CAP_JAVA=project1/.cap-runtime/java
 
 Fallback: `sudo "$JAVA_HOME/bin/java" --enable-native-access=ALL-UNNAMED -cp ... RawServer`
 
-### Firewall (nftables) — allow / deny demo traffic
+## Firewall (nftables)
 
-One script, dedicated table `inet pus_project1` (does not replace the system firewall).
-Covers TCP `801,9000`, UDP `802,9001`, and IP protocol `253` (RAW).
-
-```bash
-sudo apt install nftables   # if needed
-```
-
-Demo sequence (TCP; same idea for UDP/RAW):
+Tabela `inet pus_project1` — TCP `801,9000`, UDP `802,9001`, IP proto `253`.
 
 ```bash
-# terminal 1 — server
+# terminal 1
 java -cp project1/target/classes org.example.project1.tcp.TcpServer 9000 127.0.0.1
 
 # terminal 2
-./project1/scripts/firewall.sh deny    # client → Connection refused
+./project1/scripts/firewall.sh deny    # Connection refused
 java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 9000 hello
 
-./project1/scripts/firewall.sh allow   # client works again
+./project1/scripts/firewall.sh allow
 java -cp project1/target/classes org.example.project1.tcp.TcpClient 127.0.0.1 9000 hello
 
-./project1/scripts/firewall.sh reset   # remove demo table
+./project1/scripts/firewall.sh reset
 ```
 
-Inspect: `sudo nft list chain inet pus_project1 input`
+## Pokrycie ocen (z zasad P1)
+
+| Ocena | Wymaganie | Gdzie w projekcie |
+|-------|-----------|-------------------|
+| 3.0 | TCP, UDP, IPv4 | `tcp/*`, `udp/*` |
+| 3.5 | IPv6 | ten sam kod, host `::1` |
+| 4.0 | gniazda surowe | `raw/*`, proto 253 |
+| 4.5 | capabilities | `scripts/grant-caps.sh`, porty 801/802 |
+| 5.0 | firewall | `scripts/firewall.sh` |

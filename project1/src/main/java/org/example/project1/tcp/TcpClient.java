@@ -13,14 +13,19 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
 /**
- * TCP client: sends {@code PING <text>}, prints {@code PONG <text>} reply.
- * Host may be IPv4 or IPv6 (e.g. {@code ::1}).
+ * TCP client: connect, send {@code PING}, print {@code PONG}.
+ * CLI: {@code TcpClient <host> <port> [text]}.
  */
 public final class TcpClient {
 
     private TcpClient() {
     }
 
+    /**
+     * Opens a TCP connection to the server and exchanges one PING/PONG pair.
+     *
+     * @param args {@code host}, {@code port}, optional payload {@code text}
+     */
     public static void main(String[] args) throws IOException {
         if (args.length < 2 || args.length > 3) {
             System.err.println("Usage: TcpClient <host> <port> [text]");
@@ -29,11 +34,11 @@ public final class TcpClient {
             System.exit(1);
         }
 
-        InetAddress host = InetAddress.getByName(args[0]);
-        int port = Integer.parseInt(args[1]);
+        InetAddress host = InetAddress.getByName(args[0]); // destination IP
+        int port = Integer.parseInt(args[1]); // destination port
         String text = args.length == 3 ? args[2] : "hello";
 
-        try (Socket socket = new Socket(host, port)) {
+        try (Socket socket = new Socket(host, port)) { // TCP handshake here
             System.out.println("connected to " + socket.getRemoteSocketAddress()
                     + " (" + Net.familyLabel(host) + ")");
             BufferedWriter out = new BufferedWriter(

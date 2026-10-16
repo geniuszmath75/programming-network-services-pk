@@ -4,26 +4,44 @@ import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 /**
- * Minimal application protocol shared by TCP, UDP, and RAW demos.
- * Wire format: one UTF-8 line — {@code PING <text>} or {@code PONG <text>}.
+ * Shared application protocol for TCP, UDP, and RAW demos.
+ * Wire format: one UTF-8 line {@code PING <text>} or {@code PONG <text>}.
  */
 public final class Messages {
 
     public static final String PING = "PING";
     public static final String PONG = "PONG";
+    /** Max encoded line size on the wire. */
     public static final int MAX_PAYLOAD_BYTES = 512;
 
     private Messages() {
     }
 
+    /**
+     * Builds a request line {@code PING <text>}.
+     *
+     * @param text payload after the PING token
+     */
     public static String ping(String text) {
         return encode(PING, text);
     }
 
+    /**
+     * Builds a reply line {@code PONG <text>}.
+     *
+     * @param text payload after the PONG token
+     */
     public static String pong(String text) {
         return encode(PONG, text);
     }
 
+    /**
+     * Formats and validates a protocol line before sending.
+     *
+     * @param type {@code PING} or {@code PONG}
+     * @param text single-line payload (no CR/LF)
+     * @return ready-to-send line without trailing newline
+     */
     public static String encode(String type, String text) {
         Objects.requireNonNull(type, "type");
         Objects.requireNonNull(text, "text");
@@ -43,9 +61,11 @@ public final class Messages {
     }
 
     /**
-     * Parses one protocol line (without trailing newline).
+     * Parses a line and requires an exact message type (e.g. server expects PING).
      *
-     * @return payload text after the type token
+     * @param line full protocol line
+     * @param expectedType required kind ({@link #PING} or {@link #PONG})
+     * @return payload text only
      */
     public static String requireType(String line, String expectedType) {
         Parsed parsed = parse(line);
@@ -56,6 +76,12 @@ public final class Messages {
         return parsed.text();
     }
 
+    /**
+     * Splits a received line into type + payload and rejects unknown formats.
+     *
+     * @param line wire line without trailing newline
+     * @return parsed type and text
+     */
     public static Parsed parse(String line) {
         Objects.requireNonNull(line, "line");
         String trimmed = line.strip();
@@ -78,6 +104,12 @@ public final class Messages {
         return new Parsed(type, text);
     }
 
+    /**
+     * Result of {@link #parse(String)}.
+     *
+     * @param type  PING or PONG token
+     * @param text  payload after the token
+     */
     public record Parsed(String type, String text) {
     }
 }

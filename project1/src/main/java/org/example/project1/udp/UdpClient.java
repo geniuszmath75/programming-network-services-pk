@@ -10,16 +10,22 @@ import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 
 /**
- * UDP client: sends one {@code PING} datagram, prints {@code PONG} reply.
- * Host may be IPv4 or IPv6 (e.g. {@code ::1}).
+ * UDP client: send one {@code PING} datagram, wait for {@code PONG}.
+ * CLI: {@code UdpClient <host> <port> [text]}.
  */
 public final class UdpClient {
 
+    /** How long {@code receive} may block waiting for a reply. */
     private static final int TIMEOUT_MS = 3_000;
 
     private UdpClient() {
     }
 
+    /**
+     * Sends a single PING datagram and prints the PONG reply (or times out).
+     *
+     * @param args {@code host}, {@code port}, optional payload {@code text}
+     */
     public static void main(String[] args) throws IOException {
         if (args.length < 2 || args.length > 3) {
             System.err.println("Usage: UdpClient <host> <port> [text]");
@@ -35,7 +41,8 @@ public final class UdpClient {
         byte[] requestBytes = (Messages.ping(text) + "\n").getBytes(StandardCharsets.UTF_8);
         try (DatagramSocket socket = Net.newDatagramSocket(host)) {
             socket.setSoTimeout(TIMEOUT_MS);
-            DatagramPacket request = new DatagramPacket(requestBytes, requestBytes.length, host, port);
+            DatagramPacket request = new DatagramPacket(
+                    requestBytes, requestBytes.length, host, port); // dest IP + port
             socket.send(request);
             System.out.println("sent via " + Net.familyLabel(host) + ": " + Messages.ping(text));
 

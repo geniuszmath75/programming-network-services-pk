@@ -7,8 +7,8 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 /**
- * SOCK_RAW client (IP protocol 253): sends {@code PING}, waits for {@code PONG}.
- * Requires {@code CAP_NET_RAW} (or root). IPv4 only.
+ * RAW client on IP protocol 253: send {@code PING}, wait for {@code PONG}.
+ * On loopback, skips the echoed outbound PING until a real PONG arrives.
  */
 public final class RawClient {
 
@@ -17,6 +17,11 @@ public final class RawClient {
     private RawClient() {
     }
 
+    /**
+     * Sends one PING to the given IPv4 host and prints the matching PONG.
+     *
+     * @param args {@code ipv4-host} and optional payload {@code text}
+     */
     public static void main(String[] args) throws Exception {
         if (args.length < 1 || args.length > 2) {
             System.err.println("Usage: RawClient <ipv4-host> [text]");
@@ -46,7 +51,7 @@ public final class RawClient {
                 if (ip.protocol() != Libc.IPPROTO_EXPERIMENTAL) {
                     continue;
                 }
-                // Local raw sockets often see our own outbound PING first — skip until PONG.
+                // On loopback, own outbound PING often arrives first — wait for PONG.
                 String line = new String(ip.payload(), StandardCharsets.UTF_8).strip();
                 try {
                     String replyText = Messages.requireType(line, Messages.PONG);
@@ -54,7 +59,7 @@ public final class RawClient {
                             + Messages.pong(replyText));
                     return;
                 } catch (IllegalArgumentException ignored) {
-                    // not a PONG (e.g. echo of our PING)
+                    // not PONG yet
                 }
             }
             throw new IllegalStateException("timed out waiting for PONG from " + host.getHostAddress());

@@ -10,14 +10,19 @@ import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 
 /**
- * UDP echo server: one datagram = one {@code PING} line, reply {@code PONG} to sender.
- * Bind host may be IPv4 ({@code 127.0.0.1}) or IPv6 ({@code ::1}).
+ * UDP echo server: one datagram = one {@code PING}, reply {@code PONG} to the sender.
+ * CLI: {@code UdpServer <port> [bindHost]}.
  */
 public final class UdpServer {
 
     private UdpServer() {
     }
 
+    /**
+     * Binds a UDP socket and replies to incoming PING datagrams forever.
+     *
+     * @param args {@code port} and optional {@code bindHost}
+     */
     public static void main(String[] args) throws IOException {
         if (args.length < 1 || args.length > 2) {
             System.err.println("Usage: UdpServer <port> [bindHost]");
@@ -26,7 +31,7 @@ public final class UdpServer {
             System.exit(1);
         }
 
-        int port = Integer.parseInt(args[0]);
+        int port = Integer.parseInt(args[0]); // L4 bind port
         InetAddress bindAddress = args.length == 2
                 ? InetAddress.getByName(args[1])
                 : InetAddress.getByName("127.0.0.1");
@@ -37,7 +42,7 @@ public final class UdpServer {
                     + " (" + Net.familyLabel(bindAddress) + ")");
             while (true) {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                socket.receive(packet);
+                socket.receive(packet); // fills sender address + port
                 try {
                     handlePacket(socket, packet);
                 } catch (IllegalArgumentException ex) {
@@ -48,6 +53,12 @@ public final class UdpServer {
         }
     }
 
+    /**
+     * Validates a received PING datagram and sends a PONG back to its source address/port.
+     *
+     * @param socket bound UDP socket used to send the reply
+     * @param packet received datagram (offset/length already set by {@code receive})
+     */
     private static void handlePacket(DatagramSocket socket, DatagramPacket packet)
             throws IOException {
         String line = new String(packet.getData(), packet.getOffset(), packet.getLength(),
@@ -57,6 +68,7 @@ public final class UdpServer {
 
         String text = Messages.requireType(line, Messages.PING);
         byte[] replyBytes = (Messages.pong(text) + "\n").getBytes(StandardCharsets.UTF_8);
+        // reply to packet.getAddress()/getPort() — no connection state
         DatagramPacket reply = new DatagramPacket(
                 replyBytes, replyBytes.length, packet.getAddress(), packet.getPort());
         socket.send(reply);
