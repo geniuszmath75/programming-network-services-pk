@@ -25,7 +25,7 @@ fi
 # --- build capped launcher: copy → absolute RPATH to libjli → setcap ---
 mkdir -p "$(dirname "${CAP_JAVA}")"
 cp -f "${JAVA_BIN}" "${CAP_JAVA}"
-chmod 755 "${CAP_JAVA}"
+chmod 700 "${CAP_JAVA}"
 # Absolute RPATH so the dynamic linker finds libjli.so under AT_SECURE
 patchelf --set-rpath "${JAVA_HOME}/lib" "${CAP_JAVA}"
 # cap_net_raw = SOCK_RAW; cap_net_bind_service = listen on ports <1024
