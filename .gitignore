@@ -1,5 +1,6 @@
 target/
 project1/.cap-runtime/
+project2/.certs/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
