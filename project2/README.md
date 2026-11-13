@@ -7,10 +7,9 @@ pod wymagania indywidualnego Projektu 2:
 - własne CA i certyfikaty X.509,
 - wzajemne uwierzytelnianie certyfikatami (mTLS),
 - własny protokół aplikacyjny `PING`/`PONG`,
-- przygotowana zależność do implementacji klienta i serwera QUIC.
+- klient i serwer QUIC v1 z ALPN.
 
-Aktualnie działa część TCP/TLS/mTLS. Biblioteka Kwik jest już skonfigurowana w
-Mavenie, ale klient i serwer QUIC będą kolejnym etapem.
+Aktualnie działają części TCP/TLS/mTLS oraz QUIC v1.
 
 ## Technologia i wymagania
 
@@ -18,8 +17,8 @@ Mavenie, ale klient i serwer QUIC będą kolejnym etapem.
 - Maven,
 - standardowe JSSE z JDK (`SSLContext`, `SSLSocket`, `SSLServerSocket`),
 - JDK `keytool` do generowania certyfikatów,
-- `tech.kwik:kwik:0.12.1` — czysta javowa implementacja QUIC, przygotowana
-  w [`project2/pom.xml`](pom.xml).
+- `tech.kwik:kwik:0.12.1` — czysta javowa implementacja QUIC używana przez
+  klienta i serwer, skonfigurowana w [`project2/pom.xml`](pom.xml).
 
 Projekt nie wymaga OpenSSL, JNI ani bibliotek natywnych.
 
@@ -43,12 +42,16 @@ export PUS_CERT_PASSWORD='local-demo-password'
 
 | Ścieżka | Rola |
 |---|---|
+| `src/main/java/org/example/project2/cli/CommandLineSupport.java` | Wspólne parsowanie argumentów klienta i serwera |
 | `src/main/java/org/example/project2/protocol/ProtocolMessage.java` | Typy wiadomości `PING`, `PONG`, `ERROR` i walidacja danych |
 | `src/main/java/org/example/project2/protocol/MessageCodec.java` | Kodowanie/dekodowanie ramek protokołu |
 | `src/main/java/org/example/project2/protocol/ProtocolException.java` | Błędy formatu i walidacji protokołu |
+| `src/main/java/org/example/project2/protocol/ProtocolSupport.java` | Wspólna obsługa żądań i odpowiedzi TCP/QUIC |
 | `src/main/java/org/example/project2/tls/TlsSupport.java` | Ładowanie keystore/truststore i konfiguracja TLS 1.3 |
 | `src/main/java/org/example/project2/tls/TlsServer.java` | Serwer TCP z obowiązkowym certyfikatem klienta |
 | `src/main/java/org/example/project2/tls/TlsClient.java` | Klient TCP przedstawiający certyfikat klienta |
+| `src/main/java/org/example/project2/quic/QuicServer.java` | Serwer QUIC v1 z ALPN `pus-demo/1` |
+| `src/main/java/org/example/project2/quic/QuicClient.java` | Klient QUIC v1 z weryfikacją certyfikatu serwera |
 | `scripts/generate-certs.sh` | Własne CA, certyfikaty i trust store’y przez `keytool` |
 | `.certs/` | Lokalne keystore’y i certyfikaty; katalog jest ignorowany przez Git |
 
@@ -175,6 +178,46 @@ Serwer powinien zgłosić:
 TLS handshake rejected
 ```
 
+## Demo — QUIC v1
+
+QUIC używa UDP, TLS 1.3 wewnątrz QUIC oraz ALPN `pus-demo/1`. Serwer korzysta
+z certyfikatu `pus-server` z `server-keystore.p12`, a klient weryfikuje go
+względem CA z `client-truststore.p12`.
+
+Terminal 1 — serwer:
+
+```bash
+"$JAVA_HOME/bin/java" \
+  -cp project2/target/classes:$HOME/.m2/repository/tech/kwik/kwik/0.12.1/kwik-0.12.1.jar \
+  org.example.project2.quic.QuicServer 9444
+```
+
+Jeżeli uruchamiasz bez Mavenowego classpath, dodaj również runtime’owe
+zależności Kwik (`agent15`, `hkdf` i `io.whitfin.siphash`). Najwygodniej użyć
+`mvn dependency:build-classpath` albo classpath skonfigurowanego przez IDE.
+
+Terminal 2 — klient:
+
+```bash
+"$JAVA_HOME/bin/java" \
+  -cp project2/target/classes:<kwik-runtime-classpath> \
+  org.example.project2.quic.QuicClient \
+  localhost 9444 project2/.certs hello-quic
+```
+
+Oczekiwany wynik:
+
+```text
+PONG requestId=1 payload=hello-quic
+```
+
+Parametry:
+
+```text
+QuicServer [port] [certificate-directory]
+QuicClient [host] [port] [certificate-directory] [payload]
+```
+
 ## Protokół aplikacyjny
 
 Protokół jest tekstowy, liniowy i działa zarówno nad TCP, jak i nad
@@ -239,8 +282,8 @@ Są to certyfikaty demonstracyjne. Nie używaj ich w środowisku produkcyjnym.
 | 3.0 | TCP klient–serwer z TLS | `TlsClient`, `TlsServer`, TLS 1.3 |
 | 3.5 | Własne CA i certyfikaty | `scripts/generate-certs.sh`, `keytool` |
 | 4.0 | Uwierzytelnianie obu stron certyfikatami | `setNeedClientAuth(true)` i certyfikat klienta |
-| 4.5 | Klient QUIC | Do implementacji; zależność Kwik jest skonfigurowana |
-| 5.0 | Serwer QUIC | Do implementacji |
+| 4.5 | Klient QUIC | `QuicClient`, custom trust store, QUIC v1 |
+| 5.0 | Serwer QUIC | `QuicServer`, ALPN `pus-demo/1`, obsługa strumieni |
 
 ## Znane ograniczenia
 
@@ -249,5 +292,7 @@ Są to certyfikaty demonstracyjne. Nie używaj ich w środowisku produkcyjnym.
 - certyfikat serwera zawiera tylko `localhost` i `127.0.0.1`,
 - generowane certyfikaty mają hasło podane przez użytkownika, ale nie są
   przeznaczone do produkcji,
-- klient i serwer QUIC nie są jeszcze zaimplementowane,
+- Kwik nie oferuje po stronie serwera konfiguracji wymuszającej mTLS, dlatego
+  wzajemne uwierzytelnianie certyfikatami jest demonstrowane na TCP; QUIC
+  weryfikuje certyfikat serwera,
 - testy automatyczne i pełna dokumentacja prezentacji są kolejnym etapem.
