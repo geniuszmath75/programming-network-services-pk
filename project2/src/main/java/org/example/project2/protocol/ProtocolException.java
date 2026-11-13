@@ -8,6 +8,8 @@ import java.util.Objects;
  */
 public final class ProtocolException extends IOException {
 
+    private static final long serialVersionUID = 1L;
+
     public enum Code {
         FRAME_TOO_LARGE,
         INVALID_FORMAT,

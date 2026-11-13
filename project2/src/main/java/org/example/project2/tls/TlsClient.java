@@ -1,8 +1,7 @@
 package org.example.project2.tls;
 
-import org.example.project2.protocol.MessageCodec;
-import org.example.project2.protocol.ProtocolException;
-import org.example.project2.protocol.ProtocolMessage;
+import org.example.project2.cli.CommandLineSupport;
+import org.example.project2.protocol.ProtocolSupport;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLHandshakeException;
@@ -11,10 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
 
 /**
  * TLS 1.3 TCP client presenting a certificate issued by the demo CA.
@@ -48,68 +44,28 @@ public final class TlsClient {
 
     private static void run(String[] args)
             throws GeneralSecurityException, IOException {
-        if (args.length > 4) {
-            throw new IllegalArgumentException(
-                    "expected [host] [port] [certificate-directory] [payload]");
-        }
+        CommandLineSupport.ClientOptions options =
+                CommandLineSupport.parseClient(args, TlsSupport.DEFAULT_PORT);
 
-        String host = args.length >= 1 ? args[0] : "localhost";
-        if (host.isBlank()) {
-            throw new IllegalArgumentException("host must not be blank");
-        }
-
-        int port = args.length >= 2
-                ? TlsSupport.parsePort(args[1])
-                : TlsSupport.DEFAULT_PORT;
-        Path certificateDirectory = args.length >= 3
-                ? Path.of(args[2])
-                : TlsSupport.defaultCertificateDirectory();
-        String payload = args.length >= 4 ? args[3] : "hello";
-
-        char[] password = TlsSupport.passwordFromEnvironment();
-        SSLContext context;
-        try {
-            context = TlsSupport.createClientContext(certificateDirectory, password);
-        } finally {
-            Arrays.fill(password, '\0');
-        }
+        SSLContext context = TlsSupport.createClientContext(options.certificateDirectory());
 
         try (Socket transport = new Socket()) {
             transport.connect(
-                    new InetSocketAddress(host, port),
+                    new InetSocketAddress(options.host(), options.port()),
                     TlsSupport.CONNECT_TIMEOUT_MILLIS);
 
             try (SSLSocket socket = (SSLSocket) context.getSocketFactory()
-                    .createSocket(transport, host, port, true)) {
+                    .createSocket(transport, options.host(), options.port(), true)) {
                 TlsSupport.configureClientSocket(socket);
                 socket.setSoTimeout(TlsSupport.READ_TIMEOUT_MILLIS);
                 socket.startHandshake();
 
-                MessageCodec.write(
+                ProtocolSupport.requestAndPrint(
+                        socket.getInputStream(),
                         socket.getOutputStream(),
-                        new ProtocolMessage.Ping(
-                                1,
-                                payload.getBytes(StandardCharsets.UTF_8)));
-
-                ProtocolMessage response = MessageCodec.read(socket.getInputStream());
-                if (response == null) {
-                    throw new IOException("server closed the connection without a response");
-                }
-                printResponse(response);
+                        options.payload());
             }
         }
-    }
-
-    private static void printResponse(ProtocolMessage response) throws IOException {
-        if (response instanceof ProtocolMessage.Pong pong && pong.requestId() == 1) {
-            String payload = new String(pong.payload(), StandardCharsets.UTF_8);
-            System.out.printf("PONG requestId=%d payload=%s%n", pong.requestId(), payload);
-            return;
-        }
-        if (response instanceof ProtocolMessage.Error error) {
-            throw new IOException("server rejected request: " + error.code());
-        }
-        throw new IOException("unexpected response message");
     }
 
     private static void printUsage() {
