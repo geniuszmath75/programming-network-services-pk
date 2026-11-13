@@ -12,10 +12,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
- * Creates the JSSE contexts used by the mTLS TCP demo.
+ * Provides shared TLS context and certificate-store helpers for the TCP and
+ * QUIC demos.
  */
 public final class TlsSupport {
 
@@ -30,6 +32,27 @@ public final class TlsSupport {
     private TlsSupport() {
     }
 
+    @FunctionalInterface
+    public interface PasswordOperation<T> {
+        T apply(char[] password) throws GeneralSecurityException, IOException;
+    }
+
+    public static <T> T withPassword(PasswordOperation<T> operation)
+            throws GeneralSecurityException, IOException {
+        Objects.requireNonNull(operation, "operation");
+        char[] password = passwordFromEnvironment();
+        try {
+            return operation.apply(password);
+        } finally {
+            Arrays.fill(password, '\0');
+        }
+    }
+
+    public static SSLContext createServerContext(Path certificateDirectory)
+            throws GeneralSecurityException, IOException {
+        return withPassword(password -> createServerContext(certificateDirectory, password));
+    }
+
     public static SSLContext createServerContext(Path certificateDirectory, char[] password)
             throws GeneralSecurityException, IOException {
         Objects.requireNonNull(certificateDirectory, "certificateDirectory");
@@ -37,6 +60,11 @@ public final class TlsSupport {
                 certificateDirectory.resolve("server-keystore.p12"),
                 certificateDirectory.resolve("server-truststore.p12"),
                 password);
+    }
+
+    public static SSLContext createClientContext(Path certificateDirectory)
+            throws GeneralSecurityException, IOException {
+        return withPassword(password -> createClientContext(certificateDirectory, password));
     }
 
     public static SSLContext createClientContext(Path certificateDirectory, char[] password)
@@ -55,22 +83,6 @@ public final class TlsSupport {
                     "set PUS_CERT_PASSWORD to the password used by the generated PKCS12 stores");
         }
         return password.toCharArray();
-    }
-
-    public static Path defaultCertificateDirectory() {
-        return Path.of("project2", ".certs");
-    }
-
-    public static int parsePort(String value) {
-        try {
-            int port = Integer.parseInt(value);
-            if (port < 1 || port > 65_535) {
-                throw new NumberFormatException();
-            }
-            return port;
-        } catch (NumberFormatException exception) {
-            throw new IllegalArgumentException("port must be between 1 and 65535");
-        }
     }
 
     public static void configureServerSocket(SSLServerSocket serverSocket) {
@@ -110,7 +122,12 @@ public final class TlsSupport {
         return context;
     }
 
-    private static KeyStore loadKeyStore(Path path, char[] password)
+    public static KeyStore loadKeyStore(Path path)
+            throws GeneralSecurityException, IOException {
+        return withPassword(password -> loadKeyStore(path, password));
+    }
+
+    public static KeyStore loadKeyStore(Path path, char[] password)
             throws GeneralSecurityException, IOException {
         KeyStore keyStore = KeyStore.getInstance(KEYSTORE_TYPE);
         try (InputStream input = Files.newInputStream(path)) {

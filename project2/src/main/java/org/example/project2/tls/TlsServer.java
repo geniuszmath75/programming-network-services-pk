@@ -1,8 +1,7 @@
 package org.example.project2.tls;
 
-import org.example.project2.protocol.MessageCodec;
-import org.example.project2.protocol.ProtocolException;
-import org.example.project2.protocol.ProtocolMessage;
+import org.example.project2.cli.CommandLineSupport;
+import org.example.project2.protocol.ProtocolSupport;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLHandshakeException;
@@ -12,9 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.SocketTimeoutException;
-import java.nio.file.Path;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
 
 /**
  * TLS 1.3 TCP server with mandatory client-certificate authentication.
@@ -42,31 +39,18 @@ public final class TlsServer {
 
     private static void run(String[] args)
             throws GeneralSecurityException, IOException {
-        if (args.length > 2) {
-            throw new IllegalArgumentException("expected [port] [certificate-directory]");
-        }
+        CommandLineSupport.ServerOptions options =
+                CommandLineSupport.parseServer(args, TlsSupport.DEFAULT_PORT);
 
-        int port = args.length >= 1
-                ? TlsSupport.parsePort(args[0])
-                : TlsSupport.DEFAULT_PORT;
-        Path certificateDirectory = args.length == 2
-                ? Path.of(args[1])
-                : TlsSupport.defaultCertificateDirectory();
-
-        char[] password = TlsSupport.passwordFromEnvironment();
-        SSLContext context;
-        try {
-            context = TlsSupport.createServerContext(certificateDirectory, password);
-        } finally {
-            Arrays.fill(password, '\0');
-        }
+        SSLContext context = TlsSupport.createServerContext(options.certificateDirectory());
 
         try (SSLServerSocket serverSocket =
-                     (SSLServerSocket) context.getServerSocketFactory().createServerSocket(port)) {
+                     (SSLServerSocket) context.getServerSocketFactory()
+                             .createServerSocket(options.port())) {
             TlsSupport.configureServerSocket(serverSocket);
             System.out.printf(
                     "TLS 1.3 server listening on port %d; client certificate required%n",
-                    port);
+                    options.port());
 
             while (!serverSocket.isClosed()) {
                 try (SSLSocket socket = (SSLSocket) serverSocket.accept()) {
@@ -89,33 +73,8 @@ public final class TlsServer {
         InputStream input = socket.getInputStream();
         OutputStream output = socket.getOutputStream();
 
-        while (true) {
-            ProtocolMessage message;
-            try {
-                message = MessageCodec.read(input);
-            } catch (ProtocolException exception) {
-                MessageCodec.write(
-                        output,
-                        new ProtocolMessage.Error(
-                                exception.code().name(),
-                                "invalid protocol frame"));
-                return;
-            }
-
-            if (message == null) {
-                return;
-            }
-            if (message instanceof ProtocolMessage.Ping ping) {
-                MessageCodec.write(
-                        output,
-                        new ProtocolMessage.Pong(ping.requestId(), ping.payload()));
-            } else {
-                MessageCodec.write(
-                        output,
-                        new ProtocolMessage.Error(
-                                "INVALID_MESSAGE_TYPE",
-                                "expected PING"));
-            }
+        while (ProtocolSupport.handleRequest(input, output)) {
+            // Keep serving requests on this TCP connection.
         }
     }
 
